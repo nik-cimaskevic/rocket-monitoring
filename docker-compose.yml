@@ -1,0 +1,147 @@
+services:
+  # PostgreSQL Database
+  rocket-postgres:
+    image: postgres:16-alpine
+    container_name: rocket-postgres
+    environment:
+      POSTGRES_DB: rocket_db
+      POSTGRES_USER: rocket
+      POSTGRES_PASSWORD: rocket
+    ports:
+      - "5432:5432"
+    volumes:
+      - rocket-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rocket -d rocket_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rocket-network
+
+  # Rocket API Service
+  rocket-api:
+    build:
+      context: ./rocket-api
+      dockerfile: Dockerfile
+    container_name: rocket-api
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://rocket-postgres:5432/rocket_db
+      SPRING_DATASOURCE_USERNAME: rocket
+      SPRING_DATASOURCE_PASSWORD: rocket
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_SERVICE_NAME: rocket-api
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      rocket-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rocket-network
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-remote-write-receiver'
+      - '--enable-feature=exemplar-storage'
+    networks:
+      - rocket-network
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - rocket-network
+
+  # Tempo - Distributed Tracing
+  tempo:
+    image: grafana/tempo:2.4.1
+    container_name: tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ./infrastructure/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/tmp/tempo
+    command:
+      - '-config.file=/etc/tempo/tempo.yaml'
+    networks:
+      - rocket-network
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: loki
+    user: "0"
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infrastructure/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/tmp/loki
+    command:
+      - '-config.file=/etc/loki/local-config.yaml'
+    networks:
+      - rocket-network
+
+  # Alloy - Log Collection Agent
+  alloy:
+    image: grafana/alloy:v1.0.0
+    container_name: alloy
+    ports:
+      - "9080:9080"
+    volumes:
+      - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - 'run'
+      - '--server.http.listen-addr=0.0.0.0:9080'
+      - '/etc/alloy/config.alloy'
+    depends_on:
+      - loki
+    networks:
+      - rocket-network
+
+networks:
+  rocket-network:
+    driver: bridge
+
+volumes:
+  rocket-postgres-data:
+  prometheus-data:
+  grafana-data:
+  tempo-data:
+  loki-data:

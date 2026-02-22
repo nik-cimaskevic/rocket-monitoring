@@ -1,0 +1,2 @@
+-- Initial schema placeholder
+-- Add your tables here as needed
