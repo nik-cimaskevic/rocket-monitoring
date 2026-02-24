@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: Rocket Monitoring API
+  description: |
+    REST API for monitoring rocket states. Consumes messages from rockets
+    and exposes their current state for dashboard consumption.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8088
+    description: Local development server
+
+tags:
+  - name: Messages
+    description: Rocket message ingestion
+  - name: Rockets
+    description: Rocket state queries
+
+paths:
+  /messages:
+    post:
+      summary: Receive rocket message
+      description: |
+        Endpoint for receiving rocket state change messages from the test program.
+        Messages may arrive out of order and may be duplicated (at-least-once delivery).
+      operationId: postMessage
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RocketMessage'
+      responses:
+        '200':
+          description: Message received successfully
+        '400':
+          description: Invalid message format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rockets:
+    get:
+      summary: List all rockets
+      description: Returns a list of all rockets in the system with optional sorting
+      operationId: listRockets
+      tags:
+        - Rockets
+      parameters:
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          required: false
+          schema:
+            type: string
+            enum:
+              - type
+              - speed
+              - mission
+              - status
+            default: type
+        - name: sortOrder
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+      responses:
+        '200':
+          description: List of rockets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rocket'
+
+  /rockets/{rocketId}:
+    get:
+      summary: Get rocket state
+      description: Returns the current state of a specific rocket
+      operationId: getRocket
+      tags:
+        - Rockets
+      parameters:
+        - name: rocketId
+          in: path
+          description: Unique identifier of the rocket (channel UUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current rocket state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rocket'
+        '404':
+          description: Rocket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    RocketMessage:
+      type: object
+      required:
+        - metadata
+        - message
+      properties:
+        metadata:
+          $ref: '#/components/schemas/MessageMetadata'
+        message:
+          type: object
+          additionalProperties: true
+          description: Message payload (varies by messageType)
+
+    MessageMetadata:
+      type: object
+      required:
+        - channel
+        - messageNumber
+        - messageTime
+        - messageType
+      properties:
+        channel:
+          type: string
+          format: uuid
+          description: Unique identifier of the rocket
+        messageNumber:
+          type: integer
+          minimum: 1
+          description: Order of the message within the channel
+        messageTime:
+          type: string
+          format: date-time
+          description: Timestamp when the message was sent
+        messageType:
+          type: string
+          enum:
+            - RocketLaunched
+            - RocketSpeedIncreased
+            - RocketSpeedDecreased
+            - RocketExploded
+            - RocketMissionChanged
+          description: Type of the event that occurred
+
+    Rocket:
+      type: object
+      description: Current state of a rocket
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the rocket (channel)
+        type:
+          type: string
+          description: Type/model of the rocket
+        speed:
+          type: integer
+          minimum: 0
+          description: Current speed of the rocket
+        mission:
+          type: string
+          description: Current mission name
+        status:
+          type: string
+          enum:
+            - pending
+            - launched
+            - exploded
+          description: Current status of the rocket
+        explodedReason:
+          type: string
+          description: Reason for explosion (only present if status is 'exploded')
+        stale:
+          type: boolean
+          description: Indicates if rocket state may be incomplete due to out-of-order messages
+
+    ErrorResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code

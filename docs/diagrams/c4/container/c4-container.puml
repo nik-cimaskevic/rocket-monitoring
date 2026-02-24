@@ -1,0 +1,43 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+
+title Container Diagram - Rocket Monitoring System
+
+Person_Ext(operator, "Operator", "Monitors rocket states")
+Person_Ext(tester, "Test Engineer", "Runs simulations")
+
+System_Boundary(sys, "Rocket Monitoring System") {
+  Container(dashboard, "Rocket Dashboard", "Web App", "Displays real-time rocket states")
+  Container(api, "Rocket API", "Spring Boot MVC/JPA", "REST API for rocket message ingestion and state queries")
+  ContainerDb(postgres, "Rocket DB", "PostgreSQL", "Stores rocket states")
+}
+
+System_Boundary(test, "Test Infrastructure") {
+  Container(launcher, "Rockets Launcher", "Go CLI", "Simulates rockets sending state messages")
+}
+
+System_Boundary(observability, "Observability Stack") {
+  System_Ext(prometheus, "Prometheus", "Metrics collection")
+  System_Ext(tempo, "Tempo", "Distributed tracing")
+  System_Ext(loki, "Loki", "Log aggregation")
+  System_Ext(alloy, "Alloy", "Log collection agent")
+  System_Ext(grafana, "Grafana", "Dashboards")
+}
+
+Rel(operator, dashboard, "Views rockets", "HTTPS :3001")
+Rel(dashboard, api, "Fetches rocket states", "REST/JSON")
+Rel(tester, launcher, "Runs simulations")
+Rel(launcher, api, "POST /messages", "REST/JSON :8088")
+Rel(api, postgres, "Reads/Writes", "JDBC")
+
+Rel(prometheus, api, "Scrapes metrics", "/actuator/prometheus")
+Rel(api, tempo, "Sends traces", "OTLP :4318")
+Rel(api, alloy, "Sends logs")
+Rel(alloy, loki, "Forwards logs")
+Rel(grafana, prometheus, "Queries metrics")
+Rel(grafana, tempo, "Queries traces")
+Rel(grafana, loki, "Queries logs")
+
+@enduml

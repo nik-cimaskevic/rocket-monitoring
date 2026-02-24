@@ -1,6 +1,8 @@
 services:
   # PostgreSQL Database
   rocket-postgres:
+    profiles:
+      - infra
     image: postgres:16-alpine
     container_name: rocket-postgres
     environment:
@@ -21,6 +23,8 @@ services:
 
   # Rocket API Service
   rocket-api:
+    profiles:
+      - app
     build:
       context: ./rocket-api
       dockerfile: Dockerfile
@@ -31,8 +35,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://rocket-postgres:5432/rocket_db
       SPRING_DATASOURCE_USERNAME: rocket
       SPRING_DATASOURCE_PASSWORD: rocket
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
       OTEL_SERVICE_NAME: rocket-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
@@ -47,8 +53,41 @@ services:
     networks:
       - rocket-network
 
+  # Rockets Launcher - Test Data Generator
+  rockets-launcher:
+    profiles:
+      - launcher
+    build:
+      context: ./rockets-launcher
+      dockerfile: Dockerfile
+    container_name: rockets-launcher
+    command: ["launch", "http://rocket-api:8088/messages", "--message-delay=10ms", "--concurrency-level=10"]
+    depends_on:
+      rocket-api:
+        condition: service_healthy
+    networks:
+      - rocket-network
+
+  # Rocket Dashboard - Frontend UI
+  rocket-dashboard:
+    profiles:
+      - app
+    build:
+      context: ./rocket-dashboard
+      dockerfile: Dockerfile
+    container_name: rocket-dashboard
+    ports:
+      - "3001:80"
+    depends_on:
+      rocket-api:
+        condition: service_healthy
+    networks:
+      - rocket-network
+
   # Prometheus - Metrics Collection
   prometheus:
+    profiles:
+      - infra
     image: prom/prometheus:v2.51.0
     container_name: prometheus
     ports:
@@ -66,13 +105,15 @@ services:
 
   # Grafana - Visualization
   grafana:
+    profiles:
+      - infra
     image: grafana/grafana:10.4.0
     container_name: grafana
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
     volumes:
@@ -88,6 +129,8 @@ services:
 
   # Tempo - Distributed Tracing
   tempo:
+    profiles:
+      - infra
     image: grafana/tempo:2.4.1
     container_name: tempo
     ports:
@@ -104,6 +147,8 @@ services:
 
   # Loki - Log Aggregation
   loki:
+    profiles:
+      - infra
     image: grafana/loki:2.9.5
     container_name: loki
     user: "0"
@@ -119,6 +164,8 @@ services:
 
   # Alloy - Log Collection Agent
   alloy:
+    profiles:
+      - infra
     image: grafana/alloy:v1.0.0
     container_name: alloy
     ports:

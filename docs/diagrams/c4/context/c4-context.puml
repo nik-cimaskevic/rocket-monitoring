@@ -1,0 +1,22 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram - Rocket Monitoring System
+
+Person(operator, "Operator", "Monitors rocket states via dashboard")
+Person(tester, "Test Engineer", "Runs rocket simulations")
+
+System(rocket_system, "Rocket Monitoring System", "Consumes rocket state messages and displays current rocket states on a dashboard")
+
+System_Ext(rockets, "Rockets / Simulators", "Sends rocket state change messages (launched, speed changes, exploded, mission changed)")
+System_Ext(grafana, "Grafana", "Observability dashboards for metrics, traces, and logs")
+
+Rel(operator, rocket_system, "Views rocket states", "HTTPS")
+Rel(tester, rockets, "Launches simulations")
+Rel(rockets, rocket_system, "Sends state messages", "REST/JSON")
+Rel(operator, grafana, "Views system health", "HTTPS")
+Rel(rocket_system, grafana, "Provides observability data")
+
+@enduml

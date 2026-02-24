@@ -106,7 +106,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum(count_over_time({container=~\"${container:regex}\"} | json | __error__=\"\" | level=~\"(?i)${level:regex}\" [$__interval]))",
+          "expr": "sum(count_over_time({container=~\"${container:regex}\", level=~\"${level}\"} | json |~ \"(?i)${search}\" [$__interval]))",
           "queryType": "range",
           "refId": "A"
         }
@@ -192,7 +192,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum(\n  count_over_time(\n    {container=~\"${container:regex}\"} | json | __error__=\"\" | level=~\"(?i)error\" [$__interval]\n  )\n)",
+          "expr": "sum(count_over_time({container=~\"${container:regex}\", level=\"ERROR\"} | json |~ \"(?i)${search}\" [$__interval]))",
           "queryType": "range",
           "refId": "A"
         }
@@ -237,7 +237,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "{container=~\"${container:regex}\"}\n| json \n| __error__=\"\" \n| level=~\"(?i)${level:regex}\"\n| line_format \"{{.trace_id}} {{.level}} {{.container}} {{.logger}} — {{.message}}\"",
+          "expr": "{container=~\"${container:regex}\", level=~\"${level}\"} | json |~ \"(?i)${search}\" | line_format \"{{.timestamp}} {{.trace_id}} {{.level}} {{.container}} — {{.message}}\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -260,28 +260,33 @@
         "label": "Container",
         "type": "query",
         "datasource": { "type": "loki", "uid": "loki" },
-        "query": "label_values({container=~\".*(api|service)$\"}, container)",
+        "query": "label_values(container)",
         "refresh": 2,
         "multi": true,
         "includeAll": true,
-        "allValue": ".*(api|service)$",
+        "allValue": ".+",
         "regex": "",
         "current": { "selected": true, "text": ["All"], "value": ["$__all"] }
       },
       {
         "name": "level",
         "label": "Level",
-        "type": "custom",
-        "multi": true,
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki" },
+        "query": "label_values(level)",
+        "refresh": 2,
+        "multi": false,
         "includeAll": true,
-        "allValue": ".*",
-        "options": [
-          { "text": "ERROR", "value": "error", "selected": false },
-          { "text": "WARN", "value": "warn", "selected": false },
-          { "text": "INFO", "value": "info", "selected": false },
-          { "text": "DEBUG", "value": "debug", "selected": false }
-        ],
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] }
+        "allValue": ".+",
+        "regex": "",
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "search",
+        "label": "Search",
+        "type": "textbox",
+        "current": { "selected": false, "text": "", "value": "" },
+        "options": []
       }
     ]
   },
